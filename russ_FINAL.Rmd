@@ -1,0 +1,308 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("/Users/nikhilsharma/Downloads")
+library(readr)
+data <- read_csv("regular_season_players.csv")
+#View(data)
+```
+
+```{r}
+library(stringr)
+data <- data[,-c(1:2)]
+data$player <- str_remove_all(data$player, "\\*")
+```
+
+```{r}
+library(dplyr)
+pg <- filter(data, pos == "PG")
+sg <- filter(data, pos == "SG")
+guards <- rbind.data.frame(pg, sg)
+#View(guards)
+```
+
+```{r}
+russ <- guards[guards$player == "Russell Westbrook",]
+guards <- guards[guards$player != "Russell Westbrook",]
+```
+
+
+```{r}
+hist(guards$ftpercent)
+```
+
+clean NAs
+```{r}
+guards <- guards[,-6] ##games started
+guards$x3ppercent[is.na(guards$x3ppercent)] <- 0
+guards$ftpercent[is.na(guards$ftpercent)] <- mean(guards$ftpercent, na.rm = TRUE)
+guards[is.na(guards)] <- 0
+na <- (guards[!complete.cases(guards), ])
+#View(na)
+```
+
+```{r}
+sum(is.na(guards))
+```
+
+preparing response variables for logistic regression
+```{r}
+guards$pos <- as.factor(guards$pos)
+guards$pos <- ifelse(guards$pos == "PG", 1, 0)
+```
+
+only keep guards who played substantial minutes
+```{r}
+guards <- guards[guards$mp_per_game > 24,]
+```
+
+```{r}
+guards_info <- guards[,c(1,4, 47)]
+guards <- guards[,-c(1,4, 47)]
+```
+
+getting rid of highly correlated variables
+```{r}
+library(caret)
+numbers <- guards[,c(2:44)]
+df <- cor(guards[,c(2:44)])
+high <- findCorrelation(df, cutoff=0.7) 
+high <- sort(high)
+high
+reduced_Data <- numbers[,-c(high)]
+reduced_Data <- cbind.data.frame(guards$pos, reduced_Data)
+names(reduced_Data)[1] <- "pos"
+#View(reduced_Data)
+```
+
+
+
+```{r}
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(reduced_Data), replace = T, prob = c(0.75,0.25))
+train <- reduced_Data[sample,] #Model training Dataset
+test <- reduced_Data[!sample,] #Model test Dataset
+```
+
+constructing the model
+```{r}
+log.guards <- glm(pos ~. , data=train, family="binomial")
+```
+
+stepwise regression for variable selection
+```{r}
+library(MASS)
+step.model <- stepAIC(log.guards, direction = "both", trace = FALSE)
+summary(step.model)
+```
+
+```{r}
+test$pred <- predict(step.model, newdata = test, type = "response")
+#View(test)
+```
+
+
+
+```{r}
+test$pred <- round(test$pred)
+test$Accuracy <- ifelse (test$pos == test$pred, TRUE,
+                 ifelse (test$pos != test$pred, FALSE,NA))
+```
+
+
+```{r}
+table(test$Accuracy)
+```
+
+```{r}
+651 / (651+81)
+```
+
+Model was 88.93% accurate in classifying guard position
+
+
+
+Run model on Russ's data
+
+```{r}
+russ$pred <- predict(step.model, newdata = russ, type = "response")
+```
+
+```{r}
+russ$pred <- round(russ$pred)
+```
+
+```{r}
+russ$pred <- ifelse(russ$pred == 1, "PG", "SG")
+russ[,c(1,48,49)]
+```
+
+model classifies him as shooting guard in 2012
+
+```{r}
+table <- russ[,c(1,48,2,49)]
+names(table) <- c("Player", "Season", "Actual Position", "Predicted Position")
+write.csv(table, "russ.csv") ##to put in article
+```
+
+
+Jack:
+```{r}
+russ_compare <- rbind(russ[4,],russ[9,])
+#View(russ_compare)
+
+advance <- read_csv("regular_season_master.csv")
+advance <- advance[advance$player=="Russell Westbrook",]
+advance <- advance[,-c(21,26)]
+advance <- advance[,-29]
+advance_ccompare <- advance[c(4,9),]
+compare <- rbind(russ_compare,advance_ccompare[-c(1:8),])
+```
+
+
+```{r}
+total <- read_csv("thundertotal.csv")[,c(2,22,23,28)]
+total12 <- read_csv("total1112.csv")[,c(2,22,23,28)]
+
+par(mfrow=c(2,3))
+
+
+
+
+
+
+slices <- c(1850,1558,1044,6802-(1850+1558+1044))
+lbls <-  c("Durant","Westbrook", "Harden","Rest of the Team")
+pie(slices, labels = lbls, main="Total Points, OKC, 2011-12",col = c("white","orange","blue","light blue"))
+
+slices <- c(362,231,229,1224-(362+231+229))
+lbls <-  c("Westbrook","Durant", "Harden","Rest of the Team")
+pie(slices, labels = lbls, main="Total Assists, OKC, 2011-12",col = c("orange","white","blue","light blue"))
+
+slices <- c(527,498,301,2883-(527+498+301))
+lbls <-  c("Durant", "Ibaka","Westbrook","Rest of the Team")
+pie(slices, labels = lbls, main="Total Rebounds, OKC, 2011-12",col = c("blue","white","orange","light blue"))
+
+slices <- c(2558,1067,1033,8741-(2558+1067+1033))
+lbls <- c("Westbrook","Oladipo","Kanter","Rest of the Team")
+pie(slices, labels = lbls, main="Total Points, OKC, 2016-17",col = c("orange","white","blue","light blue"))
+
+slices <- c(840,176,130,1721-(840+176+130))
+lbls <- c("Westbrook","Oladipo","Christon","Rest of the Team")
+pie(slices, labels = lbls, main="Total Assists, OKC, 2016-17",col = c("orange","white","blue","light blue"))
+
+slices <- c(864,613,482,3823-(864+613+482))
+lbls <- c("Westbrook","Adams","Kanter","Rest of the Team")
+pie(slices, labels = lbls, main="Total Rebounds, OKC, 2016-17",col = c("orange","white","blue","light blue"))
+
+
+```
+
+```{r}
+summary(step.model)
+
+library(ggplot2)
+plot(step.model)
+
+train_pred <- predict(step.model,train)
+
+x <- seq(19,40,by=0.01)
+y <- 1/(1+exp(-1*(step.model$coeff[1] + step.model$coeff[2]*x))) 
+#plot(Food,proportion)
+lines(x,y)
+
+ plot(train$age,train_pred)
+
+ 
+agegroup <- NA
+prop <- NA
+
+
+for (i in 1:22) {
+  agegroup <- guards[guards$age==(i+18),]
+  prop[i] <- mean(agegroup$pos)
+}
+
+prop <- prop[1:17]
+prop
+age <- seq(19,35,1)
+plot(age,prop)
+data_new <- data.frame(prop,age)
+
+abline(lm(prop~seq(19,35,1)))
+
+ggplot(data_new,aes(age,prop)) + geom_point(col = "orange1")+ geom_smooth(method = "lm",formula = y~x, se = FALSE,col="dodgerblue1") + ggtitle("Proportion of Point Guards for Guards in Each Age Group") + ylab("Proportion of Point Guards") + xlab("Age Groups") 
+```
+
+Nikhil:
+
+```{r}
+advanced17 <- read_csv("advanced_thunder.csv")
+#View(advanced17)
+```
+
+```{r}
+new <- advanced17[,c(2, 19:20)]
+new <- new %>% arrange(desc(OWS))
+#View(new)
+```
+
+
+```{r}
+library(reshape2)
+new2 <- melt(new, X2=X2)
+#View(new2)
+```
+
+```{r}
+new2$X2 <- sub(".*? (.+)", "\\1", new2$X2)
+```
+
+
+```{r}
+#library(ggplot2)
+ggplot(new2, aes(x = reorder(X2, desc(value)), y = value, fill=factor(variable))) + 
+  geom_bar(stat="identity", position = "dodge") +
+  scale_fill_manual(values=c("orange1","dodgerblue1"),
+                    name="Win Shares",breaks=c("OWS", "DWS"), labels=c("Offensive", "Defensive"))+
+  xlab("Player") +
+  ylab("Win Shares") +
+  ggtitle("Win Shares, Oklahoma City Thunder, 2016-17")
+```
+
+```{r}
+advanced12 <- read_csv("advanced2.csv")
+#View(advanced12)
+```
+
+```{r}
+new3 <- advanced12[,c(2, 19:20)]
+new3 <- new3 %>% arrange(desc(OWS))
+#View(new3)
+```
+
+```{r}
+new4 <- melt(new3, X2=X2)
+#View(new4)
+```
+
+```{r}
+new4$X2 <- sub(".*? (.+)", "\\1", new4$X2)
+```
+
+
+```{r}
+ggplot(new4, aes(x = reorder(X2, desc(value)), y = value, fill=factor(variable))) + 
+  geom_bar(stat="identity", position = "dodge") +
+  scale_fill_manual(values=c("orange1","dodgerblue1"), name="Win Shares",breaks=c("OWS", "DWS"), labels=c("Offensive", "Defensive"))+
+  xlab("Player") +
+  ylab("Win Shares") +
+  ggtitle("Win Shares, Oklahoma City Thunder, 2011-12")
+```
